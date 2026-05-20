@@ -1,0 +1,11 @@
+flask
+gunicorn
+eventlet
+ultralytics
+opencv-python-headless
+easyocr
+lapx
+numpy
+python-dotenv
+flask-cors
+twilio
