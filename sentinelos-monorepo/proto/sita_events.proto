@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package sita;
+
+message VehicleMetadata {
+  string type = 1;
+  string color = 2;
+  string license_plate = 3;
+  float ocr_confidence = 4;
+  float speed = 5;
+  float speed_limit = 6;
+}
+
+message CameraTelemetry {
+  string camera_id = 1;
+  string camera_name = 2;
+  double latitude = 3;
+  double longitude = 4;
+}
+
+message IncidentEvent {
+  string event_id = 1;
+  uint64 timestamp = 2;
+  string category = 3;
+  string priority = 4;
+  CameraTelemetry telemetry = 5;
+  VehicleMetadata vehicle = 6;
+}
