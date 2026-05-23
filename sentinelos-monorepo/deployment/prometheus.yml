@@ -18,3 +18,7 @@ scrape_configs:
   - job_name: 'event-runtime'
     static_configs:
       - targets: ['event-runtime:8003']
+
+  - job_name: 'hermes-runtime'
+    static_configs:
+      - targets: ['hermes-runtime:8644']

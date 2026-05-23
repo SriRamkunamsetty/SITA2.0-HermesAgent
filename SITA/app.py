@@ -692,4 +692,5 @@ def verify_mobile_otp():
 
 if __name__ == '__main__':
     print("Starting SITA VIVA-SAFE Server...")
-    app.run(host='0.0.0.0', port=7860, debug=True)
+    debug_mode = os.getenv("SITA_DEBUG", "0") == "1"
+    app.run(host='0.0.0.0', port=7860, debug=debug_mode)

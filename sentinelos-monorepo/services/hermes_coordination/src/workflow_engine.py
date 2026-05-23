@@ -6,6 +6,15 @@ import redis
 
 logger = logging.getLogger("sentinelos.hermes.workflows")
 
+
+def as_float(value, default=None):
+    if value in (None, ""):
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
 class WorkflowKernel:
     def __init__(self, pg_dsn: str, redis_client: redis.Redis):
         self.pg_dsn = pg_dsn
@@ -102,10 +111,13 @@ class WorkflowKernel:
             elif current_state == "CLASSIFIED":
                 next_state = "COORDINATING"
             elif current_state == "COORDINATING":
-                # Check speed boundaries
-                speed = context.get("vehicle", {}).get("speed", 0)
-                speed_limit = context.get("vehicle", {}).get("speed_limit", 60)
-                if speed > speed_limit:
+                # Escalate only when we have a real speed signal and limit.
+                speed = as_float(context.get("vehicle", {}).get("speed"), None)
+                if speed is None:
+                    speed = as_float(context.get("vehicle", {}).get("speed_px_per_sec"), None)
+                speed_limit = as_float(context.get("vehicle", {}).get("speed_limit"), None)
+
+                if speed is not None and speed_limit is not None and speed > speed_limit:
                     next_state = "RESPONDER_ASSIGNED"
                 else:
                     next_state = "RESOLVED"

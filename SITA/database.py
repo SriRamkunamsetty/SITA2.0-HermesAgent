@@ -1,6 +1,7 @@
 import sqlite3
 import datetime
 import uuid
+import os
 from typing import Optional, Dict, Any
 from werkzeug.security import generate_password_hash, check_password_hash
 import firebase_utils # [NEW] Firebase Integration
@@ -151,11 +152,12 @@ def create_super_admin(password: str) -> Dict[str, Any]:
         raise Exception("Super Admin already exists. Genesis protocol locked.")
     
     unique_id = generate_agent_id()
+    hashed_password = generate_password_hash(password)
     conn = get_db_connection()
     conn.execute('''
         INSERT INTO users (email, name, role, status, agent_id, password, created_at)
         VALUES (?, 'SITA COMMANDER', 'super_admin', 'verified', ?, ?, CURRENT_TIMESTAMP)
-    ''', (f'{unique_id}@sita.internal', unique_id, password))
+    ''', (f'{unique_id}@sita.internal', unique_id, hashed_password))
     conn.commit()
     
     user = conn.execute("SELECT * FROM users WHERE role = 'super_admin'").fetchone()
@@ -331,12 +333,13 @@ def lookup_organization(name, state) -> bool:
 def join_organization(email, unique_code, password) -> tuple[bool, str]:
     conn = get_db_connection()
     org = conn.execute('SELECT * FROM organizations WHERE unique_code = ?', (unique_code,)).fetchone()
+    allow_override = os.getenv("SITA_ALLOW_OPEN_ACCESS_OVERRIDE", "0") == "1"
     
     if not org:
         conn.close()
         return False, "Organization not found"
         
-    if password != "OPEN_ACCESS_OVERRIDE" and not check_password_hash(org['password'], password):
+    if not (allow_override and password == "OPEN_ACCESS_OVERRIDE") and not check_password_hash(org['password'], password):
         conn.close()
         return False, "Invalid password"
         

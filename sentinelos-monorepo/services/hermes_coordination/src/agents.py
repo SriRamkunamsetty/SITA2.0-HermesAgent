@@ -1,50 +1,94 @@
 import logging
+from dataclasses import dataclass
+from typing import Dict, List
 
 logger = logging.getLogger("sentinelos.hermes.agents")
 
-class SentinelOSAgent:
-    def __init__(self, name: str, role: str, system_prompt: str):
+
+@dataclass
+class AgentOutcome:
+    agent: str
+    status: str
+    reasoning: str
+    actions_proposed: List[str]
+    priority: str
+
+
+class CoordinationPolicyEngine:
+    def __init__(self, name: str, role: str):
         self.name = name
         self.role = role
-        self.system_prompt = system_prompt
 
-    def run_task(self, task_payload: dict) -> dict:
-        logger.info(f"Agent [{self.name}] processing task payload...")
-        # Simulate LLM reasoning loop.
-        # In production this parses payload metrics, queries Neo4j, and invokes sub-agents.
-        reasoning = f"Validated incident context of category {task_payload.get('category')}. Action required."
-        return {
-            "agent": self.name,
-            "status": "success",
-            "reasoning": reasoning,
-            "actions_proposed": ["ADJUST_TRAFFIC_LIGHT"]
-        }
+    def run_task(self, task_payload: dict) -> Dict[str, object]:
+        vehicle = task_payload.get("vehicle", {})
+        telemetry = task_payload.get("telemetry", {})
+        category = task_payload.get("category", "vehicle_detected")
 
-# Define command prompts
-SCA_PROMPT = """
-You are the Strategic Command Agent for SentinelOS. You operate at the municipal policy and resource allocation layer.
-Your objective is city-wide safety optimization. You monitor regional incident thresholds, allocate cross-district resources,
-coordinate responses to multi-vehicle disasters, and adjust operational risk limits for lower-level agents.
-"""
+        actions: List[str] = []
+        reasons: List[str] = []
+        priority = "LOW"
 
-RCA_PROMPT = """
-You are the Regional Coordination Agent for SentinelOS. You are responsible for a specific district (e.g. Sector-North).
-Your task is to balance traffic signal timing across your district, track available emergency vehicles,
-assign patrols to incident coordinators, and resolve transit bottlenecks.
-"""
+        license_plate = vehicle.get("license_plate") or ""
+        ocr_conf = float(vehicle.get("ocr_confidence") or 0.0)
+        speed = vehicle.get("speed")
+        if speed in (None, ""):
+            speed = vehicle.get("speed_px_per_sec")
+        try:
+            speed_value = float(speed) if speed not in (None, "") else None
+        except (TypeError, ValueError):
+            speed_value = None
 
-ICA_PROMPT = """
-You are the Incident Coordination Agent. You are instantiated dynamically to manage a single, localized emergency (e.g., speed violations, vehicle collisions).
-You track the event through its operational lifecycle: Ingestion -> Verification -> Dispatch -> Resolution.
-You command execution workers to run OCR passes and query database states.
-"""
+        try:
+            speed_limit = float(vehicle.get("speed_limit")) if vehicle.get("speed_limit") not in (None, "") else None
+        except (TypeError, ValueError):
+            speed_limit = None
 
-# Core Agent Instances Factory
-def create_strategic_command_agent() -> SentinelOSAgent:
-    return SentinelOSAgent("StrategicCommand", "Strategic Command & Policy Layer", SCA_PROMPT)
+        if license_plate and ocr_conf >= 0.75:
+            actions.append("RUN_PLATE_LOOKUP")
+            reasons.append(f"plate confidence {ocr_conf:.2f} is high enough for lookup")
+            priority = "MEDIUM"
+        elif license_plate:
+            actions.append("QUEUE_OCR_REVIEW")
+            reasons.append(f"plate {license_plate} present but OCR confidence {ocr_conf:.2f} needs review")
 
-def create_regional_coordination_agent(sector: str) -> SentinelOSAgent:
-    return SentinelOSAgent(f"RegionalCoordination_{sector}", "District Congestion & Patrol Dispatch", RCA_PROMPT)
+        if speed_value is not None and speed_limit is not None and speed_value > speed_limit:
+            actions.append("DISPATCH_SPEED_ALERT")
+            reasons.append(f"speed {speed_value:.2f} exceeded limit {speed_limit:.2f}")
+            priority = "HIGH"
 
-def create_incident_coordination_agent(incident_id: str) -> SentinelOSAgent:
-    return SentinelOSAgent(f"IncidentCoordination_{incident_id}", "Local Lifecycle & Sensor Triage", ICA_PROMPT)
+        if category == "license_plate_detected":
+            actions.append("PERSIST_VEHICLE_INTELLIGENCE")
+            reasons.append("vehicle identity metadata is available for durable storage")
+
+        if not actions:
+            actions.append("MONITOR_TRAFFIC_FLOW")
+            reasons.append("no enforcement rule matched; continue monitoring")
+
+        reasoning = (
+            f"{self.role} reviewed event category={category} "
+            f"camera={telemetry.get('camera_id', 'unknown')} and proposed: {', '.join(actions)}"
+        )
+        if reasons:
+            reasoning += f" because {'; '.join(reasons)}."
+
+        outcome = AgentOutcome(
+            agent=self.name,
+            status="success",
+            reasoning=reasoning,
+            actions_proposed=actions,
+            priority=priority,
+        )
+        logger.info("Agent outcome %s", outcome)
+        return outcome.__dict__
+
+
+def create_strategic_command_agent() -> CoordinationPolicyEngine:
+    return CoordinationPolicyEngine("StrategicCommand", "Strategic Command & Policy Layer")
+
+
+def create_regional_coordination_agent(sector: str) -> CoordinationPolicyEngine:
+    return CoordinationPolicyEngine(f"RegionalCoordination_{sector}", "District Congestion & Patrol Dispatch")
+
+
+def create_incident_coordination_agent(incident_id: str) -> CoordinationPolicyEngine:
+    return CoordinationPolicyEngine(f"IncidentCoordination_{incident_id}", "Local Lifecycle & Sensor Triage")

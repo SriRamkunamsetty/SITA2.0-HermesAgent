@@ -1,14 +1,17 @@
-version: '3.8'
-
 services:
   redis-broker:
     image: redis:7.0-alpine
     container_name: sentinel_redis
     ports:
-      - "6379:6379"
+      - "16379:6379"
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - sentinel-net
 
@@ -16,13 +19,18 @@ services:
     image: postgres:15-alpine
     container_name: sentinel_postgres
     ports:
-      - "5432:5432"
+      - "15432:5432"
     environment:
-      - POSTGRES_DB=sentinelos
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=sentinelosdbpass2026
+      POSTGRES_DB: ${POSTGRES_DB:-sentinelos}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentinelos_local_dev_only}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-sentinelos}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - sentinel-net
 
@@ -30,23 +38,29 @@ services:
     image: neo4j:5.12-community
     container_name: sentinel_neo4j
     ports:
-      - "7474:7474" # HTTP
-      - "7687:7687" # Bolt
+      - "17474:7474"
+      - "17687:7687"
     environment:
-      - NEO4J_AUTH=neo4j/sentinelospassword2026
+      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/sentinelos_local_dev_only}
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 8s
+      retries: 10
     networks:
       - sentinel-net
 
   triton-server:
     image: nvcr.io/nvidia/tritonserver:23.08-py3
     container_name: sentinel_triton
+    profiles: ["gpu"]
     ports:
-      - "8000:8000" # HTTP
-      - "8001:8001" # gRPC
-      - "8002:8002" # Metrics
+      - "18000:8000"
+      - "18001:8001"
+      - "18002:8002"
     volumes:
       - ./triton_models:/models
     command: tritonserver --model-repository=/models --allow-gpu-metrics=true
@@ -68,8 +82,9 @@ services:
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
     ports:
-      - "4317:4317" # gRPC receiver
-      - "8889:8889" # Prometheus exporter
+      - "14317:4317"
+      - "14318:4318"
+      - "18889:8889"
     networks:
       - sentinel-net
 
@@ -79,7 +94,7 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
-      - "9090:9090"
+      - "19090:9090"
     networks:
       - sentinel-net
 
@@ -87,7 +102,7 @@ services:
     image: grafana/loki:2.8.2
     container_name: sentinel_loki
     ports:
-      - "3100:3100"
+      - "13100:3100"
     command: -config.file=/etc/loki/local-config.yaml
     networks:
       - sentinel-net
@@ -96,9 +111,10 @@ services:
     image: grafana/grafana:9.5.3
     container_name: sentinel_grafana
     ports:
-      - "3000:3000"
+      - "13000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-sentinelos_local_dev_only}
     networks:
       - sentinel-net
 
@@ -108,21 +124,20 @@ services:
       dockerfile: Dockerfile
     container_name: sentinel_perception
     depends_on:
-      - redis-broker
-      - triton-server
+      redis-broker:
+        condition: service_healthy
     environment:
-      - REDIS_HOST=redis-broker
-      - REDIS_PORT=6379
-      - TRITON_HOST=triton-server
-      - TRITON_PORT=8001
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+      REDIS_HOST: redis-broker
+      REDIS_PORT: 6379
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      YOLO_MODEL_PATH: ${YOLO_MODEL_PATH:-/models/yolov8s.pt}
+      OCR_ENABLED: ${OCR_ENABLED:-1}
+      FRAME_SKIP_CPU: ${FRAME_SKIP_CPU:-3}
+      FRAME_SKIP_GPU: ${FRAME_SKIP_GPU:-1}
+    volumes:
+      - ../../SITA/yolov8s.pt:/models/yolov8s.pt:ro
+    ports:
+      - "18012:8002"
     networks:
       - sentinel-net
 
@@ -132,12 +147,18 @@ services:
       dockerfile: Dockerfile
     container_name: sentinel_event_runtime
     depends_on:
-      - redis-broker
+      redis-broker:
+        condition: service_healthy
+      hermes-runtime:
+        condition: service_started
     environment:
-      - REDIS_HOST=redis-broker
-      - REDIS_PORT=6379
-      - HERMES_WEBHOOK_URL=http://hermes-runtime:8644/webhook/sita-incident
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      REDIS_HOST: redis-broker
+      REDIS_PORT: 6379
+      HERMES_WEBHOOK_URL: http://hermes-runtime:8644/webhook/sita-incident
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-sentinelos_local_dev_only}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    ports:
+      - "18003:8003"
     networks:
       - sentinel-net
 
@@ -147,20 +168,25 @@ services:
       dockerfile: Dockerfile
     container_name: sentinel_hermes
     depends_on:
-      - redis-broker
-      - postgres-db
-      - neo4j-db
+      redis-broker:
+        condition: service_healthy
+      postgres-db:
+        condition: service_healthy
+      neo4j-db:
+        condition: service_started
     environment:
-      - REDIS_HOST=redis-broker
-      - REDIS_PORT=6379
-      - PG_DSN=dbname=sentinelos user=postgres password=sentinelosdbpass2026 host=postgres-db
-      - NEO4J_URI=bolt://neo4j-db:7687
-      - NEO4J_USER=neo4j
-      - NEO4J_PASSWORD=sentinelospassword2026
-      - WEBHOOK_PORT=8644
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      REDIS_HOST: redis-broker
+      REDIS_PORT: 6379
+      PG_DSN: dbname=${POSTGRES_DB:-sentinelos} user=${POSTGRES_USER:-postgres} password=${POSTGRES_PASSWORD:-sentinelos_local_dev_only} host=postgres-db
+      NEO4J_URI: bolt://neo4j-db:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-sentinelos_local_dev_only}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-sentinelos_local_dev_only}
+      JWT_SECRET: ${JWT_SECRET:-sentinelos_local_dev_only}
+      JWT_ALGORITHMS: ${JWT_ALGORITHMS:-HS256}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     ports:
-      - "8644:8644"
+      - "18644:8644"
     networks:
       - sentinel-net
 
