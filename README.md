@@ -1,636 +1,480 @@
-# SITA 2.0 — SentinelOS
+# SITA 2.0 - Hermes Agent
 
-## Autonomous Civic Intelligence & Emergency Coordination Operating System
+## Real-Time Civic Intelligence and Coordination Platform
 
-> “Detection is not the product. Coordination is the product.”
+SITA 2.0 is a multi-part project that combines:
 
----
+- real-time vehicle perception
+- Redis Streams eventing
+- workflow coordination
+- graph persistence
+- observability infrastructure
+- a longer-term autonomous operations vision
 
-# Vision
+This repository is not just one service. It contains:
 
-SITA 2.0 SentinelOS is an AI-native autonomous operational infrastructure platform designed for realtime civic intelligence, emergency coordination, and distributed incident response.
+- a legacy but real computer vision runtime in `SITA/`
+- a newer distributed runtime scaffold in `sentinelos-monorepo/`
+- a vendored upstream `hermes-agent/` codebase for future deeper integration
 
-Unlike traditional surveillance systems that stop at detection and analytics, SentinelOS transforms perception into operational coordination.
-
-The platform combines:
-
-* realtime computer vision
-* autonomous orchestration
-* distributed event streaming
-* durable workflows
-* GPU-optimized inference
-* incident intelligence
-* predictive coordination
-* self-healing runtime systems
-
-into a unified autonomous civic operating system.
-
-SentinelOS is designed to evolve beyond:
-
-* CCTV analytics
-* traffic monitoring
-* AI dashboards
-
-and become:
-
-# “The operating system for autonomous civic coordination.”
+The current engineering goal is to turn those pieces into one reliable local-first operational system.
 
 ---
 
-# Core Philosophy
+## What The Project Does
 
-Most AI systems:
+At a high level, SITA 2.0 is designed to:
 
-* detect
-* classify
-* visualize
+1. ingest live or recorded traffic video
+2. detect and track vehicles in real time
+3. extract useful metadata such as vehicle type, color, speed estimate, and plate text
+4. publish structured detection events into Redis Streams
+5. route those events into a coordination runtime
+6. persist workflow and graph state for investigation and follow-up
+7. expose operational telemetry for monitoring and debugging
 
-SentinelOS:
+The target category is:
 
-* detects
-* reasons
-* coordinates
-* recovers
-* learns
-* orchestrates
-
-The runtime itself becomes the product.
-
----
-
-# Why SentinelOS Exists
-
-Modern civic systems suffer from:
-
-* fragmented emergency response
-* disconnected surveillance systems
-* delayed operational coordination
-* lack of autonomous workflow management
-* overloaded human operators
-* reactive infrastructure
-* no persistent operational intelligence
-
-SentinelOS addresses this by building:
-
-# autonomous operational coordination infrastructure.
+- AI perception system
+- event-driven backend
+- workflow orchestration platform
+- civic operations intelligence stack
 
 ---
 
-# Evolution of SITA
+## Repository Layout
 
-## SITA 1.0
+### `SITA/`
 
-AI Surveillance & Traffic Intelligence Platform
+Legacy working application with:
 
-Features:
+- Flask backend
+- YOLO vehicle detection
+- ByteTrack-based tracking
+- EasyOCR-based OCR
+- SQLite and file output flow
+- dashboard-oriented processing path
 
-* YOLO vehicle detection
-* ByteTrack tracking
-* OCR license plate recognition
-* realtime analytics
-* searchable vehicle intelligence
-* dashboard monitoring
+This is the most mature perception implementation in the repo history.
+
+### `sentinelos-monorepo/`
+
+Current distributed runtime foundation with:
+
+- `services/perception`
+- `services/event_runtime`
+- `services/hermes_coordination`
+- `deployment/docker-compose.yaml`
+- Prometheus, Loki, Grafana, Postgres, Neo4j, Redis, OTel collector
+
+This is the main local stack now used for system hardening.
+
+### `hermes-agent/`
+
+Vendored upstream Hermes Agent codebase.
+
+Important note:
+
+- it is present in the repository
+- it is not yet deeply integrated into the active Sentinel runtime path
+- current `hermes_coordination` is still a custom coordination service, not full upstream Hermes runtime execution
 
 ---
 
-## SITA 2.0 — SentinelOS
-
-Distributed Autonomous Civic Intelligence Operating System
-
-Evolution:
-
-* autonomous workflows
-* Hermes orchestration runtime
-* distributed event streaming
-* durable incident state machines
-* self-healing infrastructure
-* operational memory
-* predictive intelligence
-* GPU-aware scheduling
-* observability-first runtime
-* chaos-tested resilience
-
----
-
-# High-Level Architecture
+## Current Runtime Architecture
 
 ```text
-RTSP Streams / Sensors / Citizen Reports
-                    ↓
-         AI Perception Runtime
-      (YOLO + OCR + Tracking)
-                    ↓
-          Distributed Event Bus
-      (Redis Streams / Kafka)
-                    ↓
-        Hermes Coordination Runtime
-       (Autonomous Orchestration)
-                    ↓
-     Operational Coordination Layer
-                    ↓
- Incident Intelligence / Notifications
-                    ↓
- Persistence / Recovery / Observability
+Video / RTSP / MP4
+        |
+        v
+Perception Service
+(YOLO + tracking + OCR + color analysis)
+        |
+        v
+Redis Streams
+        |
+        v
+Event Runtime
+        |
+        v
+Hermes Coordination Service
+        |
+        +--> PostgreSQL workflow state
+        |
+        +--> Neo4j graph state
+        |
+        +--> Prometheus metrics / OTel hooks
 ```
 
 ---
 
-# Core System Components
+## What Has Been Completed
 
-# 1. AI Perception Runtime
+## 1. Real Perception Path
 
-Responsibilities:
+Completed:
 
-* RTSP video ingestion
-* GPU inference
-* YOLO TensorRT detection
-* ByteTrack tracking
-* OCR recognition
-* anomaly detection
-* adaptive frame scheduling
+- random and fake detections removed
+- real YOLO-based detection path added in `sentinelos-monorepo/services/perception`
+- ByteTrack-backed `model.track(...)` pipeline used for persistent IDs
+- real EasyOCR integration enabled
+- LAB and HSV-based vehicle color analysis implemented
+- speed estimation propagated from track movement
+- actual detection metadata emitted into Redis Streams
 
-Technologies:
+Completed CPU support:
 
-* Triton Inference Server
-* TensorRT
-* CUDA
-* GStreamer
-* FastAPI
+- perception container now builds and runs on CPU
+- startup no longer depends on remote YOLO weight download
+- local YOLO model is mounted from `SITA/yolov8s.pt`
+- EasyOCR weights are mounted locally from `sentinelos-monorepo/deployment/easyocr-models/`
+
+Validated locally:
+
+- sample MP4 processed through the perception service
+- frames processed
+- real detections emitted
+- metrics exposed on `/metrics`
+
+## 2. Distributed Event Runtime
+
+Completed:
+
+- Redis Streams consumer group flow is working
+- detection events are consumed from `sita:stream:detections`
+- event runtime forwards events to Hermes webhook
+- stronger deduplication logic added
+- pending message recovery support improved
+- metrics exposed for dispatch, DLQ, lag, and backpressure state
+
+Validated locally:
+
+- real events moved from perception into Redis
+- event runtime dispatched all observed test events
+- Redis consumer group pending count reached `0`
+- Redis consumer group lag reached `0`
+
+## 3. Hermes Coordination Service
+
+Completed:
+
+- service boots with Postgres and Neo4j dependencies
+- HMAC-protected webhook intake is working
+- JWT decoding path improved
+- workflow persistence is real
+- graph sync writes real nodes such as `Incident`, `Vehicle`, `Camera`, and `Action`
+- service exposes metrics
+
+Validated locally:
+
+- webhook events received from event runtime
+- workflow rows created in Postgres
+- graph nodes created in Neo4j
+
+## 4. Observability Stack
+
+Completed:
+
+- Prometheus boots and scrapes active services
+- Grafana boots
+- Loki boots and responds on readiness endpoint
+- OTel collector boots
+- perception, event runtime, and Hermes all expose `/metrics`
+
+Validated locally:
+
+- Prometheus target health is up for:
+  - `perception-service`
+  - `event-runtime`
+  - `hermes-runtime`
+  - `otel-collector`
+- Loki readiness endpoint responds
+
+## 5. Local Deployment Hardening
+
+Completed:
+
+- local Docker Compose ports moved to non-conflicting host ports
+- services can boot alongside other local software
+- CPU-first local path established
+- perception runtime no longer depends on startup-time model downloads
+
+## 6. Security Fixes Already Applied
+
+Completed:
+
+- Flask debug mode no longer forced on
+- super-admin creation now hashes passwords
+- open-access organization bypass is no longer enabled by default
+- Hermes JWT path improved from simple token compare toward real decode flow
 
 ---
 
-# 2. Event Runtime Layer
+## What Has Been Validated End-to-End
 
-Responsibilities:
-
-* distributed event streaming
-* Redis Streams pipelines
-* event durability
-* replayable workflows
-* dead-letter queues
-* retry-safe processing
-
-Features:
-
-* event sourcing
-* event replay
-* consumer groups
-* idempotent event handling
-
----
-
-# 3. Hermes Coordination Runtime
-
-The autonomous orchestration kernel of SentinelOS.
-
-Responsibilities:
-
-* workflow orchestration
-* incident coordination
-* retries
-* state persistence
-* autonomous recovery
-* agent delegation
-* operational memory
-
-Core Agents:
-
-* Incident Detection Agent
-* Severity Analysis Agent
-* Coordination Agent
-* Resource Optimization Agent
-* Communication Agent
-* Learning Agent
-
----
-
-# 4. Incident State Machine
-
-SentinelOS uses a durable operational state machine.
+The following path has been manually validated locally:
 
 ```text
-DETECTED
-↓
-VALIDATING
-↓
-CLASSIFIED
-↓
-COORDINATING
-↓
-RESPONDER_ASSIGNED
-↓
-MONITORING
-↓
-RESOLVED
-↓
-ARCHIVED
+MP4 input
+-> perception service
+-> YOLO detections
+-> tracking
+-> color analysis
+-> Redis Stream publish
+-> event runtime dispatch
+-> Hermes webhook intake
+-> PostgreSQL workflow persistence
+-> Neo4j graph persistence
+-> Prometheus metrics
 ```
 
-Features:
+Observed during validation:
 
-* replay-safe transitions
-* retry-aware orchestration
-* rollback handling
-* audit trails
-* persistent execution
-
----
-
-# 5. Observability Runtime
-
-SentinelOS is observability-first infrastructure.
-
-Integrated Stack:
-
-* Prometheus
-* Grafana
-* Loki
-* OpenTelemetry
-
-Tracked Metrics:
-
-* inference latency
-* GPU utilization
-* VRAM usage
-* workflow latency
-* Redis stream lag
-* retry counts
-* OCR throughput
-* queue depth
-* event throughput
+- perception processed a real sample MP4
+- `17` real detection events were emitted during one test run
+- `17` events were dispatched by event runtime
+- `17` events were received by Hermes
+- Redis pending count was `0`
+- Redis lag was `0`
 
 ---
 
-# 6. Self-Healing Runtime
+## What Is Currently In Progress
 
-SentinelOS autonomously recovers from:
+These areas are actively being hardened now:
 
-* Triton failures
-* Redis disconnects
-* workflow crashes
-* worker failures
-* queue saturation
-* GPU overload
+## 1. Runtime Unification
 
-Recovery Features:
+In progress:
 
-* checkpoint restoration
-* replayable workflows
-* retry orchestration
-* health supervisors
-* chaos testing
+- reducing duplication between legacy `SITA/` runtime and `sentinelos-monorepo/`
+- defining one stable golden path for local-first execution
 
----
+## 2. Perception Accuracy Hardening
 
-# 7. Graph Intelligence Layer (Planned)
+In progress:
 
-Future integration:
+- OCR stabilization across frames
+- better plate preprocessing
+- temporal voting for OCR
+- temporal voting for color stability
+- smoother CPU behavior under load
+- GPU path re-validation after CPU path stabilization
 
-* Neo4j graph intelligence
-* trajectory reconstruction
-* cross-camera tracking
-* anomaly relationship analysis
-* operational dependency graphs
+## 3. Distributed Reliability
 
----
+In progress:
 
-# 8. Predictive Intelligence Layer (Planned)
+- replay validation
+- DLQ recovery tooling
+- service restart behavior testing
+- Redis failure testing
+- idempotency validation across workflow execution
 
-Future capabilities:
+## 4. Observability Maturity
 
-* congestion forecasting
-* collision prediction
-* responder demand estimation
-* infrastructure failure prediction
-* anomaly forecasting
+In progress:
+
+- better OTel export verification
+- more complete latency instrumentation
+- stream lag and workflow latency dashboards
+- tighter operational visibility on perception internals
 
 ---
 
-# Infrastructure Stack
+## What Is Still Pending
 
-## AI Runtime
+## 1. Full Upstream Hermes Integration
 
-* YOLO
-* TensorRT
-* Triton Server
-* ByteTrack
-* OCR pipeline
+Pending:
 
-## Backend
+- replace or deeply integrate the custom `hermes_coordination` service with real upstream `hermes-agent` runtime semantics
+- add true tool-execution orchestration
+- add durable autonomous reasoning loops
+- add richer agent memory integration
 
-* FastAPI
-* Redis Streams
-* PostgreSQL
-* Neo4j (planned)
+Current truth:
 
-## Orchestration
+- the repo contains `hermes-agent`
+- the active runtime path does not yet fully use it
 
-* Hermes Agent
-* Durable workflow runtime
-* Event-driven coordination
+## 2. GPU Production Path
 
-## Observability
+Pending:
 
-* Prometheus
-* Grafana
-* Loki
-* OpenTelemetry
+- Triton server golden-path validation
+- TensorRT-backed inference validation
+- GPU batching and queue design
+- NVDEC / GStreamer optimized ingest path
+- GPU telemetry validation with real NVIDIA runtime
 
-## Deployment
+Current truth:
 
-* Docker
-* Docker Compose
-* Kubernetes/GKE (planned)
-* Google Cloud Run (planned hybrid topology)
+- GPU profile exists in Compose
+- the validated working path today is CPU-first
+- Triton was not part of the validated end-to-end run
 
----
+## 3. OCR Production Accuracy
 
-# Current Project Status
+Pending:
 
-# Completed ✅
+- multi-frame confidence aggregation tuning
+- night and blur handling validation
+- perspective robustness on angled plates
+- better false-positive suppression
+- dataset-based accuracy benchmarking
 
-## Runtime Infrastructure
+## 4. Cross-Camera Graph Intelligence
 
-* Monorepo architecture
-* Docker infrastructure
-* Redis Streams runtime
-* PostgreSQL integration
-* Triton inference integration
-* FastAPI service architecture
+Pending:
 
-## AI Perception Runtime
+- trajectory reconstruction
+- cross-camera movement linking
+- spatial-temporal search flows
+- investigation-oriented graph queries
 
-* RTSP Ingestion pipeline
-* YOLO inference runtime
-* adaptive frame scheduling
-* TensorRT-ready architecture
-* ByteTrack integration
-* OCR pipeline integration
+Current truth:
 
-## Hermes Coordination Runtime
+- Neo4j persistence exists
+- deeper graph intelligence is not complete yet
 
-* workflow engine foundation
-* durable orchestration architecture
-* agent runtime structure
-* HMAC-secured coordination hooks
-* incident coordination flows
+## 5. Replay and Recovery Maturity
 
-## Event Runtime
+Pending:
 
-* distributed event routing
-* Redis Streams consumer groups
-* event replay architecture
-* deduplication layer
-* retry-safe processing
+- operator-driven DLQ replay
+- broader crash/restart simulations
+- workflow resume guarantees across outages
+- tighter pending-claim and replay tooling
 
-## Observability
+## 6. Security Hardening
 
-* Prometheus integration
-* OpenTelemetry integration
-* Grafana integration
-* Loki logging stack
-* distributed tracing foundation
+Pending:
 
-## Resilience
+- stronger auth model across the full stack
+- removal of remaining header-trust patterns in legacy paths
+- RBAC
+- secrets management cleanup
+- service-to-service auth tightening
 
-* chaos testing foundation
-* replay architecture
-* checkpointing concepts
-* recovery workflow foundations
+## 7. Kubernetes and Cloud Scale
 
-## Benchmarking
+Pending:
 
-* Golden Path benchmarking suite
-* FPS tracking
-* workflow latency tracking
-* inference performance tracking
+- Helm or Kubernetes manifests
+- GPU node scheduling design
+- autoscaling policies
+- edge/cloud topology
+- production-grade deployment docs
 
 ---
 
-# In Progress 🚧
+## Completion Matrix
 
-## Operational Kernel Stabilization
-
-* full Golden Path validation
-* replay consistency validation
-* runtime recovery hardening
-* checkpoint durability testing
-
-## Incident State Machine
-
-* rollback semantics
-* replay-safe transitions
-* operational audit layer
-
-## Runtime Telemetry
-
-* GPU telemetry exporters
-* queue diagnostics
-* workflow tracing dashboards
-
-## Chaos Engineering
-
-* Redis crash recovery validation
-* Triton restart recovery
-* queue saturation testing
-* network partition simulation
+| Area | Status | Notes |
+|---|---|---|
+| Local Docker stack | Working | Boots successfully on validated CPU path |
+| Perception runtime | Working, improving | Real YOLO/OCR/color flow, CPU validated |
+| Tracking | Working, improving | ByteTrack-backed path active |
+| Redis Streams | Working | End-to-end event flow validated |
+| Event runtime | Working | Dispatch validated with real events |
+| Hermes coordination | Partially real | Real persistence and webhook flow, not full upstream Hermes |
+| Postgres persistence | Working | Workflow rows present |
+| Neo4j persistence | Working | Graph nodes present |
+| Prometheus metrics | Working | Active targets scraping |
+| Grafana/Loki/OTel boot | Working | Booted locally |
+| Triton GPU path | Pending validation | Not part of current validated path |
+| True autonomous agent runtime | Pending | Still not full upstream Hermes execution |
+| Production replay recovery | Partial | Core pieces exist, full validation pending |
+| Enterprise security posture | Partial | Some fixes done, more work pending |
 
 ---
 
-# Planned 🔮
-
-## Graph Intelligence
-
-* Neo4j integration
-* trajectory intelligence
-* cross-camera reasoning
-* operational graph analytics
-
-## Predictive Intelligence
-
-* congestion forecasting
-* incident prediction
-* anomaly forecasting
-* predictive resource allocation
-
-## Distributed Runtime Scaling
-
-* Kubernetes/GKE deployment
-* autoscaling GPU workers
-* distributed orchestration
-* multi-node coordination
-
-## AI Governance
-
-* human approval workflows
-* operational policy engine
-* explainable orchestration
-* autonomous governance runtime
-
-## Edge/Cloud Hybrid Runtime
-
-* edge inference execution
-* cloud orchestration
-* distributed camera federation
-
----
-
-# Golden Runtime Path
-
-Current operational kernel:
-
-```text
-RTSP Stream
-↓
-YOLO Detection
-↓
-Tracking
-↓
-OCR
-↓
-Redis Event Published
-↓
-Hermes Workflow Triggered
-↓
-Incident Created
-↓
-Severity Analysis
-↓
-Coordination Workflow
-↓
-Persistence
-↓
-Observability
-↓
-Checkpoint Saved
-```
-
-This is the foundational execution loop of SentinelOS.
-
----
-
-# Engineering Principles
-
-SentinelOS prioritizes:
-
-* operational durability
-* observability-first design
-* replayable infrastructure
-* event-driven coordination
-* GPU efficiency
-* autonomous recovery
-* distributed execution
-* measurable performance
-* resilience engineering
-
----
-
-# What Makes SentinelOS Different
-
-Most AI systems optimize for:
-
-* demos
-* dashboards
-* detections
-
-SentinelOS optimizes for:
-
-# operational continuity.
-
-The platform treats:
-
-* workflows
-* retries
-* recovery
-* orchestration
-* persistence
-* observability
-
-as first-class runtime primitives.
-
----
-
-# Future Vision
-
-SentinelOS is evolving toward:
-
-# “A distributed autonomous operating system for civic intelligence and emergency response.”
-
-Future capabilities include:
-
-* city-scale coordination
-* predictive operational intelligence
-* autonomous infrastructure scheduling
-* distributed AI runtime orchestration
-* graph-native civic intelligence
-* self-optimizing workflows
-
----
-
-# Research & Engineering Goals
-
-SentinelOS aims to explore:
-
-* autonomous orchestration systems
-* AI-native runtime infrastructure
-* distributed civic intelligence
-* resilient realtime AI systems
-* GPU-aware operational scheduling
-* self-healing AI infrastructure
-* event-driven autonomous coordination
-
----
-
-# Development Philosophy
-
-A small fully reliable autonomous runtime is more valuable than a massive unstable architecture.
-
-SentinelOS prioritizes:
-
-* reliability over hype
-* observability over assumptions
-* durability over demos
-* execution quality over feature quantity
-
----
-
-# Current Focus
+## What We Are Doing Right Now
 
 Current engineering focus:
 
-* Golden Path stabilization
-* operational hardening
-* replay validation
-* observability refinement
-* recovery testing
-* runtime telemetry
-* benchmark validation
+1. stabilize one local golden runtime path
+2. keep all AI outputs real
+3. improve OCR and color consistency
+4. harden replay, recovery, and workflow correctness
+5. move from "working demo path" to "reliable operational system"
+
+Short-term next steps:
+
+- validate more videos and RTSP sources
+- measure OCR quality and color consistency
+- stress the Redis and workflow path
+- tighten workflow state semantics
+- improve graph usefulness
+- reintroduce GPU/Triton path in a controlled way
 
 ---
 
-# Long-Term Goal
+## Known Operational Gaps
 
-SentinelOS is not intended to become:
+These are important and should be treated honestly:
 
-* another surveillance dashboard
-* another AI wrapper
-* another traffic analytics system
-
-The long-term goal is to build:
-
-# autonomous civic operational infrastructure.
+- the system is not fully production-ready yet
+- the GPU path is not the validated golden path today
+- full upstream Hermes Agent orchestration is not yet wired in
+- observability is better, but still not fully complete
+- security is improved, but not enterprise-complete
+- replay and DLQ operations still need more hardening
 
 ---
 
-# Status
+## How To Run The Current Local Stack
 
-SentinelOS is currently in:
+From `sentinelos-monorepo/deployment/`:
 
-# Active Infrastructure Development Phase
+```powershell
+docker compose up -d --build
+```
 
-The project is evolving rapidly toward:
+Important local notes:
 
-* production-grade orchestration
-* resilient distributed runtime systems
-* autonomous operational coordination
-* GPU-optimized realtime intelligence infrastructure
+- validated host ports are defined in `sentinelos-monorepo/deployment/docker-compose.yaml`
+- CPU mode is the currently validated default
+- YOLO weights are mounted from `SITA/yolov8s.pt`
+- EasyOCR weights are mounted from `sentinelos-monorepo/deployment/easyocr-models/`
+
+Useful endpoints:
+
+- Perception: `http://localhost:18012/health`
+- Event runtime: `http://localhost:18003/health`
+- Hermes runtime: `http://localhost:18644/health`
+- Prometheus: `http://localhost:19090`
+- Grafana: `http://localhost:13000`
+- Loki: `http://localhost:13100/ready`
+
+---
+
+## Manual Test Flow
+
+Example local manual validation flow:
+
+1. start the Docker stack
+2. send a local MP4 or RTSP stream to the perception service
+3. confirm `/health` and `/metrics` on perception
+4. inspect Redis stream growth
+5. confirm event runtime dispatch metrics
+6. confirm Hermes webhook metrics
+7. inspect Postgres workflow rows
+8. inspect Neo4j nodes and relationships
+9. verify Prometheus target health
+
+---
+
+## Final Project Status
+
+Current status:
+
+- the project has moved from concept-heavy scaffolding toward a real locally working runtime
+- the perception-to-event-to-workflow path is now real on CPU
+- the system is in active production-hardening phase
+- major work remains before enterprise or city-scale deployment
+
+Best concise description:
+
+SITA 2.0 is now a partially realized autonomous civic intelligence platform with a working local golden path, real AI outputs, real event flow, real persistence, and active hardening still underway around orchestration depth, GPU scale, replay resilience, and production security.
