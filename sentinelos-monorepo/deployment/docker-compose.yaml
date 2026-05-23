@@ -131,11 +131,13 @@ services:
       REDIS_PORT: 6379
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       YOLO_MODEL_PATH: ${YOLO_MODEL_PATH:-/models/yolov8s.pt}
+      EASYOCR_MODULE_PATH: /opt/easyocr
       OCR_ENABLED: ${OCR_ENABLED:-1}
       FRAME_SKIP_CPU: ${FRAME_SKIP_CPU:-3}
       FRAME_SKIP_GPU: ${FRAME_SKIP_GPU:-1}
     volumes:
       - ../../SITA/yolov8s.pt:/models/yolov8s.pt:ro
+      - ./easyocr-models:/opt/easyocr
     ports:
       - "18012:8002"
     networks:
