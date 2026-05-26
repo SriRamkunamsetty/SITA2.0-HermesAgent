@@ -1,0 +1,18 @@
+project: SITA Hermes Agent
+mode: public_benchmark
+patent_safety:
+  redact_internal_modules: true
+  expose_proprietary_orchestration: false
+  public_logs_only: true
+runtime:
+  accelerator: amd_rocm
+  framework: pytorch
+  precision: fp16_bf16
+  max_streams: 32
+  batch_window_ms: 16
+metrics:
+  fps: true
+  latency: true
+  gpu_utilization: true
+  hbm_usage: true
+  throughput: true

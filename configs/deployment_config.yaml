@@ -1,0 +1,17 @@
+deployment:
+  target: amd_gpu_node
+  containerized: true
+  orchestrator: docker_or_kubernetes
+hardware:
+  preferred_gpu:
+    - AMD Instinct MI300X
+    - AMD Instinct MI300A
+  rocm_required: true
+monitoring:
+  amd_smi: true
+  rocprof: true
+  export_metrics: true
+security:
+  redact_confidential_logs: true
+  block_private_datasets: true
+  patent_safe_mode: true
